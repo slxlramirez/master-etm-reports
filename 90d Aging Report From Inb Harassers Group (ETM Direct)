@@ -1,0 +1,48 @@
+| dbxquery 
+timeout=1800
+connection=chofalabama
+query="
+SELECT foo.PHONE_NUMBER, 
+       bar.LAST_NAME,
+       foo.CALLS
+FROM
+(
+SELECT a.PHONE_NUMBER,
+       COALESCE(b.calls,0) as CALLS
+FROM
+(
+SELECT  DISTINCT CONCAT(CONCAT(CONCAT(CONCAT(concat(concat('[',dl.country_code),']'),'('),dl.area_code),')'),dl.local_num) as PHONE_NUMBER
+       FROM     ((DIR_GROUP dg RIGHT OUTER JOIN DIR_GROUP_CONTENTS dgc on dg.OID=dgc.OID)
+                       RIGHT OUTER JOIN DIR_LISTING dl ON dgc.MEM_OID=dl.OID)
+       WHERE    dg.NAME = 'InB Harassers'
+) a LEFT OUTER JOIN
+(
+SELECT c.SOURCE, 
+       COUNT(call_oid) as calls
+FROM   CALL c
+WHERE  c.DIRECTION = 0 AND
+       c.END_TIME >= SYSDATE - 90 AND
+       c.END_TIME  < SYSDATE AND
+       c.SOURCE IN
+       (
+       SELECT   DISTINCT CONCAT(CONCAT(CONCAT(CONCAT(concat(concat('[',dl.country_code),']'),'('),dl.area_code),')'),dl.local_num) as PHONE_NUMBER
+       FROM     ((DIR_GROUP dg RIGHT OUTER JOIN DIR_GROUP_CONTENTS dgc on dg.OID=dgc.OID)
+                       RIGHT OUTER JOIN DIR_LISTING dl ON dgc.MEM_OID=dl.OID)
+       
+       WHERE    dg.NAME = 'InB Harassers'
+       )
+GROUP BY c.source
+) b ON a.PHONE_NUMBER=b.SOURCE
+) foo LEFT OUTER JOIN
+(
+SELECT  CONCAT(CONCAT(CONCAT(CONCAT(CONCAT(CONCAT('[',dl.country_code),']'),'('),dl.area_code),')'),dl.local_num) as directory_number,
+        dl.LAST_NAME
+FROM    ((DIR_GROUP dg RIGHT OUTER JOIN DIR_GROUP_CONTENTS dgc on dg.OID=dgc.OID)
+                        RIGHT OUTER JOIN DIR_LISTING dl ON dgc.MEM_OID=dl.OID)
+WHERE   dg.NAME = 'InB Harassers'
+ORDER BY directory_number
+) bar ON foo.PHONE_NUMBER=bar.DIRECTORY_NUMBER
+" shortnames=t
+| table PHONE_NUMBER LAST_NAME CALLS
+| sort -CALLS
+| eval PURGE=CASE(CALLS > 0,"NO",CALLS = 0, "YES")
