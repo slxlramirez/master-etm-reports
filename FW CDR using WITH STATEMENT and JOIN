@@ -1,0 +1,48 @@
+| dbxquery 
+timeout=1800
+connection=hca
+query="
+WITH terminated_guids as (SELECT CALL_OID FROM TERMINATIONS t WHERE t.DISPOSITION IN (0,1,2))
+SELECT foo.datekey, 
+       bar.fw_policy_name,
+       bar.fw_rule_comments,
+       bar.term_status,
+       COUNT(foo.call_oid) as calls
+FROM
+(
+SELECT c.CALL_OID,
+       TO_CHAR(c.start_time,'YYYY-MM') as datekey
+FROM   call c 
+WHERE  c.START_TIME >= TO_TIMESTAMP('2021-03-21','YYYY-MM-DD') AND
+       c.START_TIME  < TO_TIMESTAMP('2021-03-24','YYYY-MM-DD') AND
+       c.CALL_OID IN (
+           SELECT CALL_OID FROM terminated_guids
+       )
+) foo LEFT OUTER JOIN
+(
+SELECT  
+       tl.CALL_OID,
+       p.POLICY_NAME as fw_policy_name,
+       CASE tl.rule_num
+                      WHEN 0 THEN 'DEFAULT EMRG'
+                      WHEN 9999 THEN 'DEFAULT ALLOW'
+                      ELSE pr.COMMENTS
+       END as fw_rule_comments,
+       'TERMINATED' as term_status
+FROM  ((TRIGGER_LOG tl INNER JOIN POLICY p ON p.OID=tl.POLICY_OID)
+                      INNER JOIN POLICY_RULES pr ON tl.POLICY_OID=pr.POLICY_OID and tl.RULE_NUM=pr.RULE_NUM)
+WHERE  tl.CALL_OID IN (
+          SELECT CALL_OID FROM terminated_guids
+       ) 
+) bar ON foo.call_oid=bar.call_oid
+GROUP BY datekey, 
+         fw_policy_name,
+         fw_rule_comments,
+         term_status
+ORDER BY datekey,
+         fw_policy_name,
+         fw_rule_comments,
+         term_status,
+         COUNT(foo.call_oid) DESC"
+shortnames=t
+| table DATEKEY FW_POLICY_NAME FW_RULE_COMMENTS TERM_STATUS CALLS
